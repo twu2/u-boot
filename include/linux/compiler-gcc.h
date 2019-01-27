@@ -111,7 +111,13 @@
 #define __gcc_header(x) #x
 #define _gcc_header(x) __gcc_header(linux/compiler-gcc##x.h)
 #define gcc_header(x) _gcc_header(x)
+
+#define __GNUC_MIN(min) ((__GNUC__) >= (min))
+#if __GNUC_MIN(6)
+#include gcc_header(5)
+#else
 #include gcc_header(__GNUC__)
+#endif
 
 #if !defined(__noclone)
 #define __noclone	/* not needed */
