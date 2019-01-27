@@ -17,6 +17,10 @@
 #define CONFIG_SYS_LITTLE_ENDIAN
 #define CONFIG_MACH_TYPE		4273
 
+/* boot menu */
+#define CONFIG_CMD_BOOTMENU
+#define CONFIG_MENU
+
 /* CMD */
 #define CONFIG_CMD_GREPENV
 
