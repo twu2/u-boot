@@ -76,7 +76,7 @@
 
 #define CONFIG_EXTRA_ENV_SETTINGS \
 	"autoload=no\0" \
-	"bootfile=extlinux/extlinux.conf\0" \
+	"bootfile=/extlinux/extlinux.conf\0" \
 	"bootkernel=echo Booting ${kernel} from ${storagetype} ...;run setbootargs;run doboot;\0" \
 	"bootlvm=run setlvm;if sata init;then run trybootsz;fi;\0" \
 	"bootm_low=18000000\0" \
@@ -109,7 +109,7 @@
 	"loadkernel=load ${storagetype} ${storagedev} ${loadaddr} ${kernel};\0"\
 	"loadscript=load ${storagetype} ${storagedev} ${loadaddr} ${script};\0"\
 	"panel=HDMI\0" \
-	"pxe_addr_r=0x13000000\0" \
+	"pxefile_addr_r=0x13000000\0" \
 	"ramdisk_addr_r=0x12000000\0" \
 	"ramdiskfile=initrd.img\0" \
 	"run_eboot=echo Starting EBOOT ...;mmc dev 2 && mmc rescan && mmc read 10042000 a 400 && go 10042000\0" \
