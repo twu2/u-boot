@@ -42,14 +42,18 @@
 #else
 #define CONFIG_CMD_BOOTZ
 #endif
+#ifndef CONFIG_CMD_DHCP
 #define CONFIG_CMD_DHCP
+#endif
 #define CONFIG_CMD_ELF
 #define CONFIG_CMD_EXT2
 #define CONFIG_CMD_EXT4
 #define CONFIG_CMD_FAT
 #define CONFIG_CMD_FS_GENERIC
 #define CONFIG_CMD_MII
+#ifndef CONFIG_CMD_PING
 #define CONFIG_CMD_PING
+#endif
 #define CONFIG_CMD_PXE
 
 #define CONFIG_CMDLINE_EDITING
