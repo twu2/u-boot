@@ -11,6 +11,10 @@
 #ifndef __CONFIG_CM_FX6_H
 #define __CONFIG_CM_FX6_H
 
+#ifndef CONFIG_SPL_BUILD
+#include <config_distro_defaults.h>
+#endif
+
 #include "mx6_common.h"
 
 /* Machine config */
@@ -71,96 +75,60 @@
 #define CONFIG_ENV_OFFSET		(768 * 1024)
 
 #define CONFIG_EXTRA_ENV_SETTINGS \
+	"autoload=no\0" \
+	"bootfile=extlinux/extlinux.conf\0" \
+	"bootkernel=echo Booting ${kernel} from ${storagetype} ...;run setbootargs;run doboot;\0" \
+	"bootlvm=run setlvm;if sata init;then run trybootsz;fi;\0" \
+	"bootm_low=18000000\0" \
+	"bootmenu_0=SSD extlinux.conf=sata init;sysboot sata 0 any;\0" \
+	"bootmenu_1=USB extlinux.conf=usb start;sysboot usb 0 any;\0" \
+	"bootmenu_2=MicroSD extlinux.conf=mmc dev 2;mmc rescan;sysboot mmc 2 any;\0" \
+	"bootmenu_3=SSD vmlinuz=setenv ver;run bootsata;\0" \
+	"bootmenu_4=SSD vmlinuz.old=run setold;run bootsata;\0" \
+	"bootmenu_5=USB vmlinuz=setenv ver;run bootusb;\0" \
+	"bootmenu_6=USB vmlinuz.old=run setold;run bootusb;\0" \
+	"bootmenu_7=MicroSD vmlinuz=setenv ver;run bootmmc;\0" \
+	"bootmenu_8=MicroSD vmlinuz.old=run setold;run bootmmc;\0" \
+	"bootmenu_9=SSD_LVM vmlinuz=setenv ver;run bootlvm;\0" \
+	"bootmenu_10=SSD_LVM vmlinuz.old=run setold;run bootlvm;\0" \
+	"bootmmc=run setmmc;mmc dev ${storagedev};if mmc rescan;then run trybootsz;fi;\0" \
+	"bootsata=run setsata;if sata init;then run trybootsz;fi;\0" \
+	"bootscript=echo Running bootscript from ${storagetype} ...;source ${loadaddr};\0" \
+	"bootusb=run setusb;if usb start;then run trybootsz;fi;\0" \
+	"console=tty0 console=ttymxc3,115200\0" \
+	"ethprime=FEC0\0" \
+	"fdt_addr_r=0x11000000\0" \
+	"fdtaddr=0x11000000\0" \
+	"fdtfile=utilite.dtb\0" \
+	"initrd_high=0xffffffff\0" \
+	"kernel_addr_r=0x10800000\0" \
+	"kernelfile=vmlinuz\0" \
+	"loadaddr=0x10800000\0" \
+	"loadfdt=load ${storagetype} ${storagedev} ${fdtaddr} ${dtb};\0" \
+	"loadinitrd=if load ${storagetype} ${storagedev} ${ramdisk_addr_r} ${initrd};then setenv initrdarg ${ramdisk_addr_r}:${filesize};else setenv initrdarg -;fi;\0" \
+	"loadkernel=load ${storagetype} ${storagedev} ${loadaddr} ${kernel};\0"\
+	"loadscript=load ${storagetype} ${storagedev} ${loadaddr} ${script};\0"\
+	"panel=HDMI\0" \
+	"pxe_addr_r=0x13000000\0" \
+	"ramdisk_addr_r=0x12000000\0" \
+	"ramdiskfile=initrd.img\0" \
+	"run_eboot=echo Starting EBOOT ...;mmc dev 2 && mmc rescan && mmc read 10042000 a 400 && go 10042000\0" \
+	"script=boot.scr\0" \
+	"setbootargs=setenv bootargs console=${console} root=${root} ${video}\0" \
+	"setbootfile=setenv kernel ${kernelfile}${ver};setenv dtb ${fdtfile}${ver};setenv initrd ${ramdiskfile}${ver};run loadinitrd;setenv doboot bootz ${loadaddr} ${initrdarg} ${fdtaddr};run loadfdt;\0" \
+	"setlvm=setenv storagetype sata;setenv storagedev 0;setenv boottype lvm;setenv root /dev/mapper/vg-root rw rootwait rootflags=discard\0" \
+	"setmmc=setenv storagetype mmc;setenv storagedev 2;setenv boottype mmc;setenv root /dev/mmcblk0p2 rw rootwait\0" \
+	"setold=setenv ver .old;\0" \
+	"setsata=setenv storagetype sata;setenv storagedev 0;setenv boottype sata;setenv root /dev/sda2 rw rootwait rootflags=discard\0" \
+	"setusb=setenv storagetype usb;setenv storagedev 0;setenv boottype usb;setenv root /dev/sdb2 rw rootwait\0" \
+	"stderr=serial,vga\0" \
 	"stdin=serial,usbkbd\0" \
 	"stdout=serial,vga\0" \
-	"stderr=serial,vga\0" \
-	"panel=HDMI\0" \
-	"autoload=no\0" \
-	"kernel=uImage-cm-fx6\0" \
-	"script=boot.scr\0" \
-	"dtb=cm-fx6.dtb\0" \
-	"bootm_low=18000000\0" \
-	"loadaddr=0x10800000\0" \
-	"fdtaddr=0x11000000\0" \
-	"console=ttymxc3,115200\0" \
-	"ethprime=FEC0\0" \
-	"video_hdmi=mxcfb0:dev=hdmi,1920x1080M-32@50,if=RGB32\0" \
-	"video_dvi=mxcfb0:dev=dvi,1280x800M-32@50,if=RGB32\0" \
-	"doboot=bootm ${loadaddr}\0" \
-	"doloadfdt=false\0" \
-	"setboottypez=setenv kernel zImage-cm-fx6;" \
-		"setenv doboot bootz ${loadaddr} - ${fdtaddr};" \
-		"setenv doloadfdt true;\0" \
-	"setboottypem=setenv kernel uImage-cm-fx6;" \
-		"setenv doboot bootm ${loadaddr};" \
-		"setenv doloadfdt false;\0"\
-	"mmcroot=/dev/mmcblk0p2 rw rootwait\0" \
-	"sataroot=/dev/sda2 rw rootwait\0" \
-	"nandroot=/dev/mtdblock4 rw\0" \
-	"nandrootfstype=ubifs\0" \
-	"mmcargs=setenv bootargs console=${console} root=${mmcroot} " \
-		"${video}\0" \
-	"sataargs=setenv bootargs console=${console} root=${sataroot} " \
-		"${video}\0" \
-	"nandargs=setenv bootargs console=${console} " \
-		"root=${nandroot} " \
-		"rootfstype=${nandrootfstype} " \
-		"${video}\0" \
-	"nandboot=if run nandloadkernel; then " \
-			"run nandloadfdt;" \
-			"run setboottypem;" \
-			"run storagebootcmd;" \
-			"run setboottypez;" \
-			"run storagebootcmd;" \
-		"fi;\0" \
-	"run_eboot=echo Starting EBOOT ...; "\
-		"mmc dev 2 && " \
-		"mmc rescan && mmc read 10042000 a 400 && go 10042000\0" \
-	"loadscript=load ${storagetype} ${storagedev} ${loadaddr} ${script};\0"\
-	"loadkernel=load ${storagetype} ${storagedev} ${loadaddr} ${kernel};\0"\
-	"loadfdt=load ${storagetype} ${storagedev} ${fdtaddr} ${dtb};\0" \
-	"bootscript=echo Running bootscript from ${storagetype} ...;" \
-		   "source ${loadaddr};\0" \
-	"nandloadkernel=nand read ${loadaddr} 0 780000;\0" \
-	"nandloadfdt=nand read ${fdtaddr} 780000 80000;\0" \
-	"setupmmcboot=setenv storagetype mmc; setenv storagedev 2;\0" \
-	"setupsataboot=setenv storagetype sata; setenv storagedev 0;\0" \
-	"setupnandboot=setenv storagetype nand;\0" \
-	"setupusbboot=setenv storagetype usb; setenv storagedev 0;\0" \
-	"storagebootcmd=echo Booting from ${storagetype} ...;" \
-			"run ${storagetype}args; run doboot;\0" \
-	"trybootk=if run loadkernel; then " \
-		"if ${doloadfdt}; then " \
-			"run loadfdt;" \
-		"fi;" \
-		"run storagebootcmd;" \
-		"fi;\0" \
-	"trybootsmz=if run loadscript; then " \
-			"run bootscript;" \
-		"fi;" \
-		"run setboottypem;" \
-		"run trybootk;" \
-		"run setboottypez;" \
-		"run trybootk;\0"
+	"trybootk=if run loadkernel;then run bootkernel;fi;\0" \
+	"trybootsz=run setbootargs;if run loadscript;then run bootscript;fi;run setbootfile;run trybootk;\0" \
+	"video=video=1024x768@70\0"
 
-#define CONFIG_BOOTCOMMAND \
-	"run setupmmcboot;" \
-	"mmc dev ${storagedev};" \
-	"if mmc rescan; then " \
-		"run trybootsmz;" \
-	"fi;" \
-	"run setupusbboot;" \
-	"if usb start; then "\
-		"if run loadscript; then " \
-			"run bootscript;" \
-		"fi;" \
-	"fi;" \
-	"run setupsataboot;" \
-	"if sata init; then " \
-		"run trybootsmz;" \
-	"fi;" \
-	"run setupnandboot;" \
-	"run nandboot;"
+#define CONFIG_BOOTCOMMAND	"bootmenu 3"
 
 #define CONFIG_PREBOOT		"usb start"
 
