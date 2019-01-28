@@ -16,6 +16,8 @@
 #include <fs.h>
 #include <asm/io.h>
 
+#include <ansi.h>
+#include <watchdog.h>
 #include "menu.h"
 #include "cli.h"
 
@@ -469,6 +471,7 @@ static int get_relfile_envaddr(cmd_tbl_t *cmdtp, const char *file_path, const ch
  * list - lets these form a list, which a pxe_menu struct will hold.
  */
 struct pxe_label {
+    int no;
 	char num[4];
 	char *name;
 	char *menu;
@@ -482,6 +485,8 @@ struct pxe_label {
 	int localboot;
 	int localboot_val;
 	struct list_head list;
+	struct pxe_menu *pxe_menu;	/* this pxe_menu */
+    int console;
 };
 
 /*
@@ -501,6 +506,8 @@ struct pxe_menu {
 	char *default_label;
 	int timeout;
 	int prompt;
+    int active;
+    int count;
 	struct list_head labels;
 };
 
@@ -567,6 +574,204 @@ static void label_print(void *data)
 	const char *c = label->menu ? label->menu : label->name;
 
 	printf("%s:\t%s\n", label->num, c);
+}
+
+enum ansimenu_key {
+	KEY_NONE = 0,
+	KEY_UP,
+	KEY_DOWN,
+	KEY_SELECT,
+};
+
+static void ansimenu_print_entry(void *data)
+{
+	struct pxe_label *label = data;
+	const char *c = label->menu ? label->menu : label->name;
+	int reverse = (label->pxe_menu->active == label->no);
+
+	/*
+	 * Move cursor to line where the entry will be drown (entry->no)
+	 * First 3 lines contain bootmenu header + 1 empty line
+	 */
+	printf(ANSI_CURSOR_POSITION, label->no + 4, 1);
+
+	puts("     ");
+
+	if (reverse)
+		puts(ANSI_COLOR_REVERSE);
+
+    if (label->console) {
+        printf("%s:\tU-Boot console\n", label->num);
+    }
+    else {
+        printf("%s:\t%s\n", label->num, c);
+    }
+	//puts(label->title);
+
+	if (reverse)
+		puts(ANSI_COLOR_RESET);
+}
+
+static void ansimenu_autoboot_loop(struct pxe_menu *menu,
+				enum ansimenu_key *key, int *esc)
+{
+	int i, c;
+
+    printf(ANSI_CURSOR_POSITION, menu->count + 6, 1);
+    puts("  Press UP/DOWN to move, ENTER to select");
+    puts(ANSI_CLEAR_LINE_TO_END);
+    printf(ANSI_CURSOR_POSITION, menu->count + 7, 1);
+    puts(ANSI_CLEAR_LINE);
+	if (menu->timeout > 0) {
+		printf(ANSI_CURSOR_POSITION, menu->count + 5, 1);
+		printf("  Hit any key to stop autoboot: %2d ", menu->timeout);
+	}
+
+	while (menu->timeout > 0) {
+		for (i = 0; i < 100; ++i) {
+			if (!tstc()) {
+				WATCHDOG_RESET();
+				mdelay(10);
+				continue;
+			}
+
+			menu->timeout = -1;
+			c = getc();
+
+			switch (c) {
+			case '\e':
+				*esc = 1;
+				*key = KEY_NONE;
+				break;
+			case '\r':
+				*key = KEY_SELECT;
+				break;
+			default:
+				*key = KEY_NONE;
+				break;
+			}
+
+			break;
+		}
+
+		if (menu->timeout < 0)
+			break;
+
+		--menu->timeout;
+		printf("\b\b\b%2d ", menu->timeout);
+	}
+
+	printf(ANSI_CURSOR_POSITION, menu->count + 5, 1);
+	puts(ANSI_CLEAR_LINE);
+
+	if (menu->timeout == 0)
+		*key = KEY_SELECT;
+}
+
+static void ansimenu_loop(struct pxe_menu *menu,
+		enum ansimenu_key *key, int *esc)
+{
+	int c;
+
+	while (!tstc()) {
+		WATCHDOG_RESET();
+		mdelay(10);
+	}
+
+	c = getc();
+
+	switch (*esc) {
+	case 0:
+		/* First char of ANSI escape sequence '\e' */
+		if (c == '\e') {
+			*esc = 1;
+			*key = KEY_NONE;
+		}
+		break;
+	case 1:
+		/* Second char of ANSI '[' */
+		if (c == '[') {
+			*esc = 2;
+			*key = KEY_NONE;
+		} else {
+			*esc = 0;
+		}
+		break;
+	case 2:
+	case 3:
+		/* Third char of ANSI (number '1') - optional */
+		if (*esc == 2 && c == '1') {
+			*esc = 3;
+			*key = KEY_NONE;
+			break;
+		}
+
+		*esc = 0;
+
+		/* ANSI 'A' - key up was pressed */
+		if (c == 'A')
+			*key = KEY_UP;
+		/* ANSI 'B' - key down was pressed */
+		else if (c == 'B')
+			*key = KEY_DOWN;
+		/* other key was pressed */
+		else
+			*key = KEY_NONE;
+
+		break;
+	}
+
+	/* enter key was pressed */
+	if (c == '\r')
+		*key = KEY_SELECT;
+}
+
+static char *ansimenu_choice_entry(void *data)
+{
+	struct pxe_menu *menu = data;
+	struct list_head *pos;
+	struct pxe_label *label;
+	enum ansimenu_key key = KEY_NONE;
+	int esc = 0;
+
+	while (1) {
+		if (menu->timeout >= 0) {
+			/* Autoboot was not stopped */
+			ansimenu_autoboot_loop(menu, &key, &esc);
+		} else {
+			/* Some key was pressed, so autoboot was stopped */
+			ansimenu_loop(menu, &key, &esc);
+		}
+
+		switch (key) {
+		case KEY_UP:
+			if (menu->active > 0)
+				--menu->active;
+			/* no menu key selected, regenerate menu */
+			return NULL;
+		case KEY_DOWN:
+			if (menu->active < menu->count - 1)
+				++menu->active;
+			/* no menu key selected, regenerate menu */
+			return NULL;
+		case KEY_SELECT:
+            list_for_each(pos, &menu->labels) {
+                label = list_entry(pos, struct pxe_label, list);
+                if (label->no == menu->active)
+                        return label->num;
+            }
+		default:
+			break;
+		}
+	}
+
+	/* never happens */
+	debug("ansimenu: this should not happen");
+	return NULL;
+}
+
+__weak void menu_display_statusline(struct menu *m)
+{
 }
 
 /*
@@ -1210,6 +1415,9 @@ static int parse_label(char **c, struct pxe_menu *cfg)
 		return -EINVAL;
 	}
 
+    label->pxe_menu = cfg;
+    label->console = 0;
+
 	list_add_tail(&label->list, &cfg->labels);
 
 	while (1) {
@@ -1449,8 +1657,16 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 	/*
 	 * Create a menu and add items for all the labels.
 	 */
-	m = menu_create(cfg->title, cfg->timeout, cfg->prompt, label_print,
-			NULL, NULL);
+    cfg->count = 0;
+    label = label_create();
+    if (label) {
+        label->pxe_menu = cfg;
+        label->console = 1;
+        list_add_tail(&label->list, &cfg->labels);
+    }
+    cfg->timeout = cfg->timeout / 10;
+    m = menu_create(NULL, cfg->timeout, 1, ansimenu_print_entry,
+            ansimenu_choice_entry, cfg);
 
 	if (!m)
 		return NULL;
@@ -1458,14 +1674,18 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 	list_for_each(pos, &cfg->labels) {
 		label = list_entry(pos, struct pxe_label, list);
 
+        ++cfg->count;
+        label->no = i-1;
 		sprintf(label->num, "%d", i++);
 		if (menu_item_add(m, label->num, label) != 1) {
 			menu_destroy(m);
 			return NULL;
 		}
 		if (cfg->default_label &&
-		    (strcmp(label->name, cfg->default_label) == 0))
+		    (strcmp(label->name, cfg->default_label) == 0)) {
 			default_num = label->num;
+            cfg->active = label->no;
+        }
 
 	}
 
@@ -1521,12 +1741,21 @@ static void handle_pxe_menu(cmd_tbl_t *cmdtp, struct pxe_menu *cfg)
 	void *choice;
 	struct menu *m;
 	int err;
+	struct pxe_label *label;
 
 	m = pxe_menu_to_menu(cfg);
 	if (!m)
 		return;
 
+    puts(ANSI_CURSOR_HIDE);
+    puts(ANSI_CLEAR_CONSOLE);
+    printf(ANSI_CURSOR_POSITION, 1, 1);
+
 	err = menu_get_choice(m, &choice);
+
+    puts(ANSI_CURSOR_SHOW);
+    puts(ANSI_CLEAR_CONSOLE);
+    printf(ANSI_CURSOR_POSITION, 1, 1);
 
 	menu_destroy(m);
 
@@ -1542,6 +1771,9 @@ static void handle_pxe_menu(cmd_tbl_t *cmdtp, struct pxe_menu *cfg)
 	 */
 
 	if (err == 1) {
+        label = (struct pxe_label *)choice;
+        if (label->console)
+            return;
 		err = label_boot(cmdtp, choice);
 		if (!err)
 			return;
