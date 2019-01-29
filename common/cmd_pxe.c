@@ -471,7 +471,7 @@ static int get_relfile_envaddr(cmd_tbl_t *cmdtp, const char *file_path, const ch
  * list - lets these form a list, which a pxe_menu struct will hold.
  */
 struct pxe_label {
-    int no;
+	int no;
 	char num[4];
 	char *name;
 	char *menu;
@@ -486,7 +486,7 @@ struct pxe_label {
 	int localboot_val;
 	struct list_head list;
 	struct pxe_menu *pxe_menu;	/* this pxe_menu */
-    int console;
+	int console;
 };
 
 /*
@@ -506,8 +506,9 @@ struct pxe_menu {
 	char *default_label;
 	int timeout;
 	int prompt;
-    int active;
-    int count;
+	int ansi;
+	int active;
+	int count;
 	struct list_head labels;
 };
 
@@ -600,13 +601,12 @@ static void ansimenu_print_entry(void *data)
 	if (reverse)
 		puts(ANSI_COLOR_REVERSE);
 
-    if (label->console) {
-        printf("%s:\tU-Boot console\n", label->num);
-    }
-    else {
-        printf("%s:\t%s\n", label->num, c);
-    }
-	//puts(label->title);
+	if (label->console) {
+		printf("%s:\tU-Boot console\n", label->num);
+	}
+	else {
+		printf("%s:\t%s\n", label->num, c);
+	}
 
 	if (reverse)
 		puts(ANSI_COLOR_RESET);
@@ -617,11 +617,11 @@ static void ansimenu_autoboot_loop(struct pxe_menu *menu,
 {
 	int i, c;
 
-    printf(ANSI_CURSOR_POSITION, menu->count + 6, 1);
-    puts("  Press UP/DOWN to move, ENTER to select");
-    puts(ANSI_CLEAR_LINE_TO_END);
-    printf(ANSI_CURSOR_POSITION, menu->count + 7, 1);
-    puts(ANSI_CLEAR_LINE);
+	printf(ANSI_CURSOR_POSITION, menu->count + 6, 1);
+	puts("  Press UP/DOWN to move, ENTER to select");
+	puts(ANSI_CLEAR_LINE_TO_END);
+	printf(ANSI_CURSOR_POSITION, menu->count + 7, 1);
+	puts(ANSI_CLEAR_LINE);
 	if (menu->timeout > 0) {
 		printf(ANSI_CURSOR_POSITION, menu->count + 5, 1);
 		printf("  Hit any key to stop autoboot: %2d ", menu->timeout);
@@ -755,11 +755,11 @@ static char *ansimenu_choice_entry(void *data)
 			/* no menu key selected, regenerate menu */
 			return NULL;
 		case KEY_SELECT:
-            list_for_each(pos, &menu->labels) {
-                label = list_entry(pos, struct pxe_label, list);
-                if (label->no == menu->active)
-                        return label->num;
-            }
+			list_for_each(pos, &menu->labels) {
+				label = list_entry(pos, struct pxe_label, list);
+				if (label->no == menu->active)
+					return label->num;
+			}
 		default:
 			break;
 		}
@@ -1415,8 +1415,8 @@ static int parse_label(char **c, struct pxe_menu *cfg)
 		return -EINVAL;
 	}
 
-    label->pxe_menu = cfg;
-    label->console = 0;
+	label->pxe_menu = cfg;
+	label->console = 0;
 
 	list_add_tail(&label->list, &cfg->labels);
 
@@ -1657,16 +1657,22 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 	/*
 	 * Create a menu and add items for all the labels.
 	 */
-    cfg->count = 0;
-    label = label_create();
-    if (label) {
-        label->pxe_menu = cfg;
-        label->console = 1;
-        list_add_tail(&label->list, &cfg->labels);
-    }
-    cfg->timeout = cfg->timeout / 10;
-    m = menu_create(NULL, cfg->timeout, 1, ansimenu_print_entry,
-            ansimenu_choice_entry, cfg);
+	cfg->count = 0;
+	if (cfg->ansi) {
+		label = label_create();
+		if (label) {
+			label->pxe_menu = cfg;
+			label->console = 1;
+			list_add_tail(&label->list, &cfg->labels);
+		}
+		cfg->timeout = cfg->timeout / 10;
+		m = menu_create(NULL, cfg->timeout, 1, ansimenu_print_entry,
+			ansimenu_choice_entry, cfg);
+	}
+	else {
+		m = menu_create(cfg->title, cfg->timeout, cfg->prompt, label_print,
+			NULL, NULL);
+	}
 
 	if (!m)
 		return NULL;
@@ -1674,8 +1680,8 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 	list_for_each(pos, &cfg->labels) {
 		label = list_entry(pos, struct pxe_label, list);
 
-        ++cfg->count;
-        label->no = i-1;
+		++cfg->count;
+		label->no = i-1;
 		sprintf(label->num, "%d", i++);
 		if (menu_item_add(m, label->num, label) != 1) {
 			menu_destroy(m);
@@ -1684,9 +1690,8 @@ static struct menu *pxe_menu_to_menu(struct pxe_menu *cfg)
 		if (cfg->default_label &&
 		    (strcmp(label->name, cfg->default_label) == 0)) {
 			default_num = label->num;
-            cfg->active = label->no;
-        }
-
+			cfg->active = label->no;
+		}
 	}
 
 	/*
@@ -1742,20 +1747,27 @@ static void handle_pxe_menu(cmd_tbl_t *cmdtp, struct pxe_menu *cfg)
 	struct menu *m;
 	int err;
 	struct pxe_label *label;
+	char *s;
 
+	s = getenv("menutype");
+	cfg->ansi = (!s || strcmp(s, "ansi")) ? 0 : 1;
 	m = pxe_menu_to_menu(cfg);
 	if (!m)
 		return;
 
-    puts(ANSI_CURSOR_HIDE);
-    puts(ANSI_CLEAR_CONSOLE);
-    printf(ANSI_CURSOR_POSITION, 1, 1);
+	if (cfg->ansi) {
+		puts(ANSI_CURSOR_HIDE);
+		puts(ANSI_CLEAR_CONSOLE);
+		printf(ANSI_CURSOR_POSITION, 1, 1);
+	}
 
 	err = menu_get_choice(m, &choice);
 
-    puts(ANSI_CURSOR_SHOW);
-    puts(ANSI_CLEAR_CONSOLE);
-    printf(ANSI_CURSOR_POSITION, 1, 1);
+	if (cfg->ansi) {
+		puts(ANSI_CURSOR_SHOW);
+		puts(ANSI_CLEAR_CONSOLE);
+		printf(ANSI_CURSOR_POSITION, 1, 1);
+	}
 
 	menu_destroy(m);
 
@@ -1771,9 +1783,11 @@ static void handle_pxe_menu(cmd_tbl_t *cmdtp, struct pxe_menu *cfg)
 	 */
 
 	if (err == 1) {
-        label = (struct pxe_label *)choice;
-        if (label->console)
-            return;
+		if (cfg->ansi) {
+			label = (struct pxe_label *)choice;
+			if (label->console)
+				return;
+		}
 		err = label_boot(cmdtp, choice);
 		if (!err)
 			return;
