@@ -108,6 +108,7 @@
 	"loadinitrd=if load ${storagetype} ${storagedev} ${ramdisk_addr_r} ${initrd};then setenv initrdarg ${ramdisk_addr_r}:${filesize};else setenv initrdarg -;fi;\0" \
 	"loadkernel=load ${storagetype} ${storagedev} ${loadaddr} ${kernel};\0"\
 	"loadscript=load ${storagetype} ${storagedev} ${loadaddr} ${script};\0"\
+	"menutype=ansi\0" \
 	"panel=HDMI\0" \
 	"pxefile_addr_r=0x13000000\0" \
 	"ramdisk_addr_r=0x12000000\0" \
